@@ -21,7 +21,7 @@ This Python script allows you to import devices and users from Azure Active Dire
 
 ## Configuration
 
-A template file should come with a copy of this script. Please remove ".template" and add information as needed. Please see "APPREGGUIDE" for Azure config help.
+A template file should come with a copy of this script. Please remove ".template" from "azure2snipe.cfg" and add information as needed. Please see "APPREGGUIDE" for Azure config help.
 
 ## Usage
 
