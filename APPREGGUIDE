@@ -1,0 +1,65 @@
+**Configuring Azure App Registration for the Snipe-IT Azure Sync Script**
+
+To successfully run the Snipe-IT Azure Sync Script, you need to create an app registration in Azure Active Directory (Azure AD). This app registration will allow the script to access Microsoft Graph API and retrieve necessary device information from your Azure environment. Follow the steps below to configure the app registration.
+
+### Step 1: Log in to Azure Portal
+1. Navigate to [https://portal.azure.com/](https://portal.azure.com/).
+2. Log in using an account with sufficient privileges to create app registrations (typically a Global Admin or App Admin role).
+
+### Step 2: Create a New App Registration
+1. In the Azure portal, go to **Azure Active Directory** from the left-hand navigation.
+2. Select **App registrations**.
+3. Click on **New registration**.
+4. Provide a **Name** for your app (e.g., "SnipeIT Sync App").
+5. Under **Supported account types**, select **Accounts in this organizational directory only** if you intend to limit it to your tenant.
+6. Leave the **Redirect URI** blank or set it to a placeholder, as it is not required for this script.
+7. Click **Register** to create the app.
+
+### Step 3: Configure API Permissions
+1. In the newly created app, navigate to **API permissions** in the left panel.
+2. Click **Add a permission**.
+3. Select **Microsoft Graph**.
+4. Choose **Application permissions**.
+5. Search for and add the following permissions:
+   - **DeviceManagementManagedDevices.Read.All** (for reading device details from Intune)
+   - **User.Read.All** (for reading user details)
+6. Click **Add permissions**.
+7. After adding the permissions, click on **Grant admin consent for {tenant_name}** to provide consent for these permissions to be used.
+
+### Step 4: Create a Client Secret
+1. In the app registration, go to **Certificates & secrets**.
+2. Under **Client secrets**, click **New client secret**.
+3. Provide a description (e.g., "SnipeIT Sync Secret").
+4. Choose an **Expiration** period (e.g., 1 year or 2 years).
+5. Click **Add**.
+6. Copy the **Value** of the client secret. You will need this for the script configuration. **Make sure to store it securely**, as it will not be displayed again.
+
+### Step 5: Gather Necessary Information
+You will need the following pieces of information for the script configuration:
+1. **Tenant ID**: Available under **Overview** of the Azure AD blade.
+2. **Client ID**: Available under **Overview** of the app registration you created.
+3. **Client Secret**: The value generated in Step 4.
+
+### Step 6: Update the Config File
+In the `azure2snipe.cfg` file of the Snipe-IT Azure Sync Script, update the Azure credentials section as follows:
+
+```json
+"azure": {
+  "tenant_id": "<Your Tenant ID>",
+  "client_id": "<Your Client ID>",
+  "client_secret": "<Your Client Secret>"
+}
+```
+
+Replace `<Your Tenant ID>`, `<Your Client ID>`, and `<Your Client Secret>` with the values gathered in the previous steps.
+
+### Step 7: Verify App Registration Permissions
+Ensure that the permissions granted are correctly reflected. It might take a few minutes for these permissions to propagate across Azure AD.
+
+### Troubleshooting Tips
+- **Admin Consent**: If your script is unable to authenticate or retrieve data, ensure that you have granted **admin consent** to the permissions added.
+- **Permissions Issues**: Verify that the permissions added to the app registration match those listed above. Any missing permissions might prevent the script from accessing necessary data.
+- **Client Secret Expiry**: If the client secret has expired, create a new one and update your `config.json` accordingly.
+
+Following these steps should ensure that your Azure App Registration is properly configured to work with the Snipe-IT Azure Sync Script. If you encounter any errors, double-check the permissions, credentials, and client secret for accuracy.
+

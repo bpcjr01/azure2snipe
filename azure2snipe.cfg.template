@@ -1,0 +1,11 @@
+{
+    "azure": {
+        "tenant_id": "your-tenant-id",
+        "client_id": "your-client-id",
+        "client_secret": "your-client-secret"
+    },
+    "snipe_it": {
+        "api_token": "your-snipe-it-api-token",
+        "url": "https://your-snipe-it-instance.com/api/v1"
+    }
+}

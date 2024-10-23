@@ -1,0 +1,82 @@
+# Snipe-IT and Azure AD Sync Script
+
+This Python script allows you to import devices and users from Azure Active Directory (Azure AD) or InTune into a Snipe-IT instance, updating devices and users that already exist. It automates the synchronization process, helping you keep track of assets seamlessly.
+
+## Features
+
+- Import devices from Azure AD or InTune.
+- Automatically create or update devices in Snipe-IT.
+- Assign devices to users as per Azure data.
+- Handle missing models and categories by creating them in Snipe-IT.
+- Supports "dry-run" mode for testing without making changes.
+- Verbose mode for detailed logging.
+- Configurable SSL verification and TLS warning suppression.
+- Option to slow down requests to avoid rate-limiting.
+
+## Prerequisites
+
+- Python 3.6+
+- MSAL Python Library for Azure AD authentication. (pip install msal)
+- Snipe-IT API token with permissions to manage hardware, models, and categories.
+
+## Configuration
+
+A template file should come with a copy of this script. Please remove ".template" and add information as needed. Please see "APPREGGUIDE" for Azure config help.
+
+## Usage
+
+Run the script using the command line:
+
+```sh
+python azure2snipe [OPTIONS]
+```
+
+### Options
+
+- `--dry-run` : Perform a dry run without making any changes to Snipe-IT.
+- `-v`, `--verbose` : Enable verbose output for detailed logging.
+- `--do-not-verify-ssl` : Disable SSL verification for Snipe-IT requests.
+- `--slowdown` : Add a 1-second delay to each request to avoid rate-limiting.
+- `--suppress-tls-warning` : Suppress TLS warnings.
+
+### Examples
+
+1. **Perform a dry run without making changes**
+   ```sh
+   python azure2snipe --dry-run
+   ```
+
+2. **Run the sync with verbose output**
+   ```sh
+   python azure2snipe -v
+   ```
+
+3. **Disable SSL verification for Snipe-IT requests**
+   ```sh
+   python azure2snipe --do-not-verify-ssl
+   ```
+
+4. **Run with a delay between requests to avoid rate-limiting**
+   ```sh
+   python azure2snipe --slowdown
+   ```
+
+## Error Handling
+
+The script includes enhanced error handling for common issues:
+- If a category or model is missing in Snipe-IT, it will attempt to create it.
+- If SSL verification is disabled, warnings are suppressed if the `--suppress-tls-warning` option is used.
+- Detailed error messages are provided for failed API calls.
+
+## Contributing
+
+Feel free to fork this project and submit pull requests. Contributions are always welcome to make the script more robust and feature-rich for the community.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgements
+
+This script was developed with the assistance of ChatGPT, an AI language model by OpenAI. Special thanks to the Snipe-IT and Azure communities for their documentation and tools.
+

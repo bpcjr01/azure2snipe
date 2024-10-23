@@ -1,0 +1,521 @@
+#version = 1.0.0
+import requests
+import msal
+import json
+import argparse
+import jwt
+import time
+import urllib3
+
+# Load configuration from JSON file
+def load_config(file_path, verbose=False):
+    try:
+        if verbose:
+            print(f"Loading configuration from '{file_path}'")
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Error loading JSON configuration: {e}")
+        exit(1)
+    except FileNotFoundError:
+        print(f"Configuration file '{file_path}' not found.")
+        exit(1)
+
+# Load credentials
+config = load_config('azure2snipe.cfg')
+
+# Azure AD / InTune credentials
+TENANT_ID = config['azure']['tenant_id']
+CLIENT_ID = config['azure']['client_id']
+CLIENT_SECRET = config['azure']['client_secret']
+
+# Snipe-IT API credentials
+SNIPE_IT_API_TOKEN = config['snipe_it']['api_token']
+SNIPE_IT_URL = config['snipe_it']['url']
+
+# Snipe-IT headers
+SNIPE_IT_HEADERS = {
+    'Authorization': f'Bearer {SNIPE_IT_API_TOKEN}',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
+
+# Suppress TLS warnings if specified
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Microsoft Graph API authentication and endpoints
+AUTH_URL = f'https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token'
+GRAPH_API_URL = 'https://graph.microsoft.com/v1.0'
+
+# MSAL client to get Microsoft Graph API token
+def get_graph_token(verbose=False):
+    try:
+        if verbose:
+            print("Attempting to obtain a token from Azure AD...")
+        app = msal.ConfidentialClientApplication(
+            CLIENT_ID,
+            authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+            client_credential=CLIENT_SECRET,
+        )
+
+        scopes = ['https://graph.microsoft.com/.default']
+        result = app.acquire_token_for_client(scopes=scopes)
+
+        if 'access_token' in result:
+            if verbose:
+                print("Access token obtained successfully.")
+                decoded_token = jwt.decode(result['access_token'], options={"verify_signature": False})
+                print("Decoded token information:")
+                print(json.dumps(decoded_token, indent=4))
+            return result['access_token']
+        else:
+            raise Exception("Could not obtain token. Please verify your tenant ID, client ID, and client secret.")
+    except Exception as e:
+        print(f"Error obtaining Graph token: {e}")
+        raise
+
+# Get devices from InTune
+def get_devices(graph_token, verbose=False, slowdown=False):
+    try:
+        url = f"{GRAPH_API_URL}/deviceManagement/managedDevices"
+        headers = {'Authorization': f'Bearer {graph_token}'}
+
+        if verbose:
+            print(f"Fetching devices from Microsoft Graph API: {url}")
+        else:
+            print("Fetching devices from Microsoft Graph API...")
+
+        response = requests.get(url, headers=headers)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200:
+            devices = response.json().get('value', [])
+            if isinstance(devices, list):
+                if verbose:
+                    print(f"Successfully fetched {len(devices)} devices.")
+                else:
+                    print(f"Successfully fetched {len(devices)} devices.")
+                return devices
+            else:
+                raise Exception(f"Unexpected response format: {devices}")
+        else:
+            raise Exception(f"Error fetching devices: {response.status_code}, {response.text}")
+
+    except Exception as e:
+        print(f"Error encountered while fetching devices: {e}")
+        raise
+
+# Get device from Snipe-IT by serial number
+def get_device_by_serial(serial, verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if verbose:
+            print(f"Checking if device with serial number '{serial}' exists in Snipe-IT...")
+        else:
+            print(f"Checking if device with serial number '{serial}' exists in Snipe-IT...")
+
+        url = f"{SNIPE_IT_URL}/hardware/byserial/{serial}"
+        response = requests.get(url, headers=SNIPE_IT_HEADERS, verify=verify_ssl)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200:
+            try:
+                devices = response.json()
+                if isinstance(devices, dict):
+                    devices_list = devices.get('rows', [])
+                    if isinstance(devices_list, list):
+                        if devices_list:
+                            if verbose:
+                                print(f"Device found in Snipe-IT: {devices_list[0]}")
+                            return devices_list
+                        else:
+                            if verbose:
+                                print("No device found in Snipe-IT with the given serial number.")
+                            return []
+                    else:
+                        raise TypeError(f"Expected 'rows' to be a list, got: {type(devices_list)}")
+                else:
+                    raise TypeError(f"Expected response to be a dictionary, got: {type(devices)}")
+            except json.JSONDecodeError as e:
+                raise Exception(f"Failed to parse JSON response: {e}")
+        else:
+            raise Exception(f"Error searching for device by serial: {response.status_code}, {response.text}")
+
+    except Exception as e:
+        print(f"Error encountered while checking device serial: {e}")
+        raise
+
+# Get model ID from Snipe-IT by model name
+def get_model_id_by_name(model_name, verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if verbose:
+            print(f"Fetching model ID for model name '{model_name}' from Snipe-IT...")
+        else:
+            print(f"Fetching model ID for model name '{model_name}' from Snipe-IT...")
+
+        url = f"{SNIPE_IT_URL}/models"
+        params = {'search': model_name}
+        response = requests.get(url, headers=SNIPE_IT_HEADERS, params=params, verify=verify_ssl)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200:
+            models = response.json().get('rows', [])
+            for model in models:
+                if model.get('name').lower() == model_name.lower():
+                    if verbose:
+                        print(f"Model found in Snipe-IT: {model}")
+                    return model.get('id')
+            if verbose:
+                print(f"No matching model found for '{model_name}'.")
+            else:
+                print(f"No matching model found for '{model_name}'.")
+            return None
+        else:
+            raise Exception(f"Error fetching model ID: {response.status_code}, {response.text}")
+
+    except Exception as e:
+        print(f"Error encountered while fetching model ID: {e}")
+        raise
+
+# Get available categories from Snipe-IT
+def get_available_categories(verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if verbose:
+            print("Fetching available categories from Snipe-IT...")
+        else:
+            print("Fetching available categories from Snipe-IT...")
+
+        url = f"{SNIPE_IT_URL}/categories"
+        response = requests.get(url, headers=SNIPE_IT_HEADERS, verify=verify_ssl)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200:
+            categories = response.json().get('rows', [])
+            if verbose:
+                print(f"Fetched {len(categories)} categories from Snipe-IT.")
+            return categories
+        else:
+            raise Exception(f"Error fetching categories: {response.status_code}, {response.text}")
+
+    except Exception as e:
+        print(f"Error encountered while fetching categories: {e}")
+        raise
+
+# Create a new category in Snipe-IT
+def create_category_in_snipe_it(category_name, verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if verbose:
+            print(f"Creating a new category in Snipe-IT for category name '{category_name}'...")
+        else:
+            print(f"Creating a new category in Snipe-IT for category name '{category_name}'...")
+
+        # Check if the category already exists
+        categories = get_available_categories(verify_ssl, verbose, slowdown)
+        for category in categories:
+            if category.get('name').lower() == category_name.lower():
+                if verbose:
+                    print(f"Category '{category_name}' already exists with ID: {category.get('id')}")
+                return category.get('id')
+
+        category_data = {
+            "name": category_name,
+            "category_type": "asset"
+        }
+
+        response = requests.post(f"{SNIPE_IT_URL}/categories", headers=SNIPE_IT_HEADERS, json=category_data, verify=verify_ssl)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200 or response.status_code == 201:
+            response_json = response.json()
+            payload = response_json.get('payload')
+
+            if not payload or not isinstance(payload, dict):
+                print(f"Warning: Payload is missing or not a dictionary. Full response: {response_json}")
+                return None
+
+            category_id = payload.get('id')
+            if not category_id:
+                raise Exception("Category ID not found in the response payload.")
+            if verbose:
+                print(f"Created new category in Snipe-IT: {category_name} with ID {category_id}")
+            else:
+                print(f"Created new category in Snipe-IT: {category_name} with ID {category_id}")
+            return category_id
+
+        else:
+            print(f"Failed to create category. Status code: {response.status_code}, Response: {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"Error encountered while creating category in Snipe-IT: {e}")
+        return None
+
+# Create a new model in Snipe-IT
+def create_model_in_snipe_it(model_name, verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if verbose:
+            print(f"Creating a new model in Snipe-IT for model name '{model_name}'...")
+        else:
+            print(f"Creating a new model in Snipe-IT for model name '{model_name}'...")
+
+        categories = get_available_categories(verify_ssl, verbose, slowdown)
+        default_category = next((cat for cat in categories if cat.get('type') == 'asset'), None)
+        if not default_category:
+            if verbose:
+                print("No valid category found. Creating a new default category.")
+            else:
+                print("No valid category found. Creating a new default category.")
+            default_category_id = create_category_in_snipe_it("Default Asset Category", verify_ssl, verbose, slowdown)
+            if not default_category_id:
+                raise Exception("Failed to create a default category.")
+        else:
+            default_category_id = default_category.get('id')
+
+        model_data = {
+            "name": model_name,
+            "category_id": default_category_id,
+            "manufacturer_id": 1,  # Default manufacturer ID, adjust as needed
+        }
+
+        response = requests.post(f"{SNIPE_IT_URL}/models", headers=SNIPE_IT_HEADERS, json=model_data, verify=verify_ssl)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200 or response.status_code == 201:
+            response_json = response.json()
+            payload = response_json.get('payload')
+
+            # Improved error handling for missing or unexpected payload
+            if not payload or not isinstance(payload, dict):
+                print(f"Warning: Payload is missing or not a dictionary. Full response: {response_json}")
+                return None
+
+            model_id = payload.get('id')
+            if not model_id:
+                raise Exception("Model ID not found in the response payload.")
+            if verbose:
+                print(f"Created new model in Snipe-IT: {model_name} with ID {model_id}")
+            else:
+                print(f"Created new model in Snipe-IT: {model_name} with ID {model_id}")
+            return model_id
+
+        else:
+            print(f"Failed to create model. Status code: {response.status_code}, Response: {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"Error encountered while creating model in Snipe-IT: {e}")
+        return None
+
+# Create a new device in Snipe-IT
+def create_device_in_snipe_it(device, verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if not isinstance(device, dict):
+            raise TypeError(f"Expected device to be a dictionary, got {type(device)}")
+
+        # Handle cases where model is unexpectedly a string
+        model_data = device.get('model', {})
+        if isinstance(model_data, str):
+            if verbose:
+                print(f"Warning: 'model' field is a string. Attempting to find or create a matching model. Model: {model_data}")
+            else:
+                print(f"Warning: 'model' field is a string. Attempting to find or create a matching model. Model: {model_data}")
+            model_id = get_model_id_by_name(model_data, verify_ssl, verbose, slowdown)
+            if not model_id:
+                if verbose:
+                    print(f"Model '{model_data}' not found in Snipe-IT. Creating a new model.")
+                model_id = create_model_in_snipe_it(model_data, verify_ssl, verbose, slowdown)
+                if not model_id:
+                    raise Exception("Failed to create model for the device.")
+        else:
+            model_display_name = model_data.get('displayName', 'Unknown Model')
+            model_id = get_model_id_by_name(model_display_name, verify_ssl, verbose, slowdown)
+            if not model_id:
+                if verbose:
+                    print(f"Model '{model_display_name}' not found in Snipe-IT. Creating a new model.")
+                model_id = create_model_in_snipe_it(model_display_name, verify_ssl, verbose, slowdown)
+                if not model_id:
+                    raise Exception("Failed to create model for the device.")
+
+        device_data = {
+            "name": device.get('deviceName', 'Unknown Device'),
+            "serial": device.get('serialNumber'),
+            "model_id": model_id,
+            "manufacturer": device.get('manufacturer'),
+            "status_id": 1  # Active
+        }
+
+        if verbose:
+            print(f"Creating device in Snipe-IT: {device_data}")
+        else:
+            print(f"Creating device in Snipe-IT: {device_data['name']}")
+
+        response = requests.post(f"{SNIPE_IT_URL}/hardware", headers=SNIPE_IT_HEADERS, json=device_data, verify=verify_ssl)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200 or response.status_code == 201:
+            try:
+                response_json = response.json()
+                if verbose:
+                    print(f"Response from Snipe-IT API (create device): {json.dumps(response_json, indent=4)}")
+                payload = response_json.get('payload')
+                if payload is None:
+                    raise ValueError("Payload is None. Snipe-IT API did not return expected data.")
+                if not isinstance(payload, dict):
+                    raise TypeError(f"Expected payload to be a dictionary, got: {type(payload)}")
+                device_id = payload.get('id')
+                if not device_id:
+                    raise Exception("Device ID not found in the response payload.")
+                print(f"Created device: {device_data['name']}")
+                return device_id
+            except json.JSONDecodeError as e:
+                raise Exception(f"Failed to parse JSON response: {e}")
+        else:
+            print(f"Failed to create device. Status code: {response.status_code}, Response: {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"Error encountered while creating device in Snipe-IT: {e}")
+        return None
+
+# Update an existing device in Snipe-IT
+def update_device_in_snipe_it(snipe_id, device, verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if not isinstance(device, dict):
+            raise TypeError(f"Expected device to be a dictionary, got {type(device)}")
+
+        if verbose:
+            print(f"Device information received for update: {device}")
+        else:
+            print(f"Updating device in Snipe-IT: {device.get('deviceName')}")
+
+        # Handle cases where model is unexpectedly a string
+        model_data = device.get('model', {})
+        if isinstance(model_data, str):
+            if verbose:
+                print(f"Warning: 'model' field is a string. Using fallback value. Model: {model_data}")
+            model_display_name = model_data
+        else:
+            model_display_name = model_data.get('displayName', 'Unknown Model')
+
+        device_data = {
+            "name": device.get('deviceName', 'Unknown Device'),
+            "serial": device.get('serialNumber'),
+            "model": model_display_name,
+            "manufacturer": device.get('manufacturer'),
+            "status_id": 1  # Active
+        }
+
+        # Fetch existing device data from Snipe-IT to check for changes
+        existing_device = get_device_by_serial(device.get('serialNumber'), verify_ssl, verbose, slowdown)
+        if existing_device:
+            existing_device_data = existing_device[0]
+            if device_data == existing_device_data:
+                if verbose:
+                    print(f"No changes detected for device: {device_data['name']}. Skipping update.")
+                else:
+                    print(f"No changes detected for device: {device_data['name']}. Skipping update.")
+                print("---")
+                return
+
+        if verbose:
+            print(f"Updating device in Snipe-IT: {device_data}")
+
+        url = f"{SNIPE_IT_URL}/hardware/{snipe_id}"
+        response = requests.put(url, headers=SNIPE_IT_HEADERS, json=device_data, verify=verify_ssl)
+        if slowdown:
+            time.sleep(1)
+
+        if response.status_code == 200:
+            print(f"Updated device: {device_data['name']}")
+        else:
+            raise Exception(f"Failed to update device: {response.status_code}, {response.text}")
+
+    except Exception as e:
+        print(f"Error encountered while updating device in Snipe-IT: {e}")
+        raise
+
+# Add or update devices in Snipe-IT and automatically check them out to primary user
+def import_devices_to_snipe_it(devices, dry_run=False, verify_ssl=True, verbose=False, slowdown=False):
+    try:
+        if not isinstance(devices, list):
+            raise TypeError(f"Expected 'devices' to be a list, got {type(devices)}")
+
+        for device in devices:
+            if not isinstance(device, dict):
+                raise TypeError(f"Expected each device to be a dictionary, got {type(device)}")
+
+            serial_number = device.get('serialNumber')
+            if not serial_number:
+                if verbose:
+                    print(f"Skipping device without a serial number: {device}")
+                else:
+                    print("Skipping device without a serial number.")
+                continue
+
+            if verbose:
+                print(f"Processing device: {device.get('deviceName')} (Serial: {serial_number})")
+            else:
+                print(f"Processing device: {device.get('deviceName')} (Serial: {serial_number})")
+
+            snipe_device = get_device_by_serial(serial_number, verify_ssl, verbose, slowdown)
+
+            if snipe_device:
+                # Device exists, update it
+                snipe_id = snipe_device[0].get('id')
+                if not snipe_id:
+                    raise Exception(f"Missing 'id' in Snipe-IT device data: {snipe_device[0]}")
+
+                if dry_run:
+                    print(f"[DRY RUN] Would update device: {device.get('deviceName')}")
+                else:
+                    update_device_in_snipe_it(snipe_id, device, verify_ssl, verbose, slowdown)
+            else:
+                # Device doesn't exist, create it
+                if dry_run:
+                    print(f"[DRY RUN] Would create device: {device.get('deviceName')}")
+                else:
+                    create_device_in_snipe_it(device, verify_ssl, verbose, slowdown)
+
+            print("---")
+
+    except Exception as e:
+        print(f"Error encountered during device import: {e}")
+        raise
+
+# Main function
+def main():
+    parser = argparse.ArgumentParser(description="Sync devices and users from Azure AD to Snipe-IT.")
+    parser.add_argument('--dry-run', action='store_true', help='Perform a dry run without making changes.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output.')
+    parser.add_argument('--do-not-verify-ssl', action='store_true', help='Disable SSL verification for Snipe-IT requests.')
+    parser.add_argument('--slowdown', action='store_true', help='Add a 1-second delay to each request.')
+    parser.add_argument('--suppress-tls-warning', action='store_true', help='Suppress TLS warnings.')
+    args = parser.parse_args()
+
+    verbose = args.verbose
+    verify_ssl = not args.do_not_verify_ssl
+    slowdown = args.slowdown
+
+    if args.suppress_tls_warning:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    try:
+        # Load configuration with verbose output if specified
+        config = load_config('azure2snipe.cfg', verbose=verbose)
+
+        # Proceed with device synchronization
+        graph_token = get_graph_token(verbose=verbose)
+        devices = get_devices(graph_token, verbose=verbose, slowdown=slowdown)
+        import_devices_to_snipe_it(devices, dry_run=args.dry_run, verify_ssl=verify_ssl, verbose=verbose, slowdown=slowdown)
+
+    except Exception as e:
+        print(f"Error encountered in main function: {e}")
+
+if __name__ == '__main__':
+    main()
