@@ -1,3 +1,4 @@
+#Version 1.0.0
 # Snipe-IT and Azure AD Sync Script
 
 This Python script allows you to import devices and users from Azure Active Directory (Azure AD) or InTune into a Snipe-IT instance, updating devices and users that already exist. It automates the synchronization process, helping you keep track of assets seamlessly.
@@ -7,7 +8,7 @@ This Python script allows you to import devices and users from Azure Active Dire
 - Import devices from Azure AD or InTune.
 - Automatically create or update devices in Snipe-IT.
 - Assign devices to users as per Azure data.
-- Handle missing models and categories by creating them in Snipe-IT.
+- Handle missing models and categories by creating them in Snipe-IT. (Currently broken.)
 - Supports "dry-run" mode for testing without making changes.
 - Verbose mode for detailed logging.
 - Configurable SSL verification and TLS warning suppression.
